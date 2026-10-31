@@ -1,0 +1,20 @@
+# Binaries & build outputs
+/avalon
+/bin/
+/dist/
+/web/dist/
+/web/node_modules/
+/.runtime/
+/*.tar.gz
+/release-manifest.json
+/deploy/images.env
+
+# Local environment secrets (NEVER commit real credentials)
+.env
+.env.*
+production.env
+
+# OS & editor files
+.DS_Store
+*.swp
+*.tsbuildinfo
