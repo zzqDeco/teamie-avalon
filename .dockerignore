@@ -1,0 +1,11 @@
+.git
+.DS_Store
+web/node_modules
+web/dist
+.runtime
+*.tar.gz
+release-manifest.json
+deploy/images.env
+.env
+production.env
+*.tsbuildinfo
