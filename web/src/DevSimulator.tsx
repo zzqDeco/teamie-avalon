@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ExcaliburSealEmblem } from "./icons";
 import type { TeamieInitPayload } from "./types";
 
 interface DevPlayerSession {
@@ -17,8 +18,22 @@ interface DevTokensResp {
   players: DevPlayerSession[];
 }
 
+type DevLayoutMode = "stage" | "split" | "grid";
+
 export function DevSimulator() {
-  const [preset, setPreset] = useState("5p");
+  const initialParams =
+    typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+  const [preset, setPreset] = useState(() => initialParams?.get("preset") || "5p");
+  const [layoutMode, setLayoutMode] = useState<DevLayoutMode>(() => {
+    const raw = initialParams?.get("layout");
+    if (raw === "stage" || raw === "split" || raw === "grid") return raw;
+    return "split";
+  });
+  const [activeSlot, setActiveSlot] = useState<number>(() => {
+    const raw = Number(initialParams?.get("slot") || "1");
+    return Number.isFinite(raw) && raw >= 1 ? raw : 1;
+  });
+  const initialActionRef = useRef(initialParams?.get("action") || "seat_all");
   const [data, setData] = useState<DevTokensResp | null>(null);
   const [loading, setLoading] = useState(false);
   const [errMsg, setErrMsg] = useState<string | null>(null);
@@ -72,6 +87,9 @@ export function DevSimulator() {
         const json = (await resp.json()) as DevTokensResp;
         sessionsRef.current = json;
         setData(json);
+        setActiveSlot((prev) =>
+          json.players.some((p) => p.slot === prev) ? prev : (json.players[0]?.slot ?? 1),
+        );
         for (const p of json.players) {
           pushInitToSlot(p.slot, json);
         }
@@ -85,7 +103,9 @@ export function DevSimulator() {
   );
 
   useEffect(() => {
-    void loadTokens(preset, "seat_all");
+    const rawAct = initialActionRef.current;
+    initialActionRef.current = "seat_all";
+    void loadTokens(preset, rawAct === "none" ? "" : rawAct);
   }, [preset, loadTokens]);
 
   useEffect(() => {
@@ -116,14 +136,44 @@ export function DevSimulator() {
     <div className="dev-workbench">
       <header className="dev-toolbar">
         <div className="dev-toolbar-left">
-          <h1>⚔️ 阿瓦隆本地多视角联调台 (/dev)</h1>
-          <span className="faint-text">
-            真实跨抽屉 <code>postMessage</code> 握手 + 对称 HS256 JWT + 非对称迷雾验证
+          <h1>
+            <ExcaliburSealEmblem className="av-svg-md" />
+            <span>阿瓦隆 · 卡美洛动态宽度联调台 (/dev)</span>
+          </h1>
+          <span style={{ fontSize: "11.5px", color: "var(--text-muted)" }}>
+            支持全屏宽舞台 / 双栏分屏 / 多座网格切换 · 真实 <code>postMessage</code> 握手 + 非对称迷雾验证
           </span>
         </div>
         <div className="dev-toolbar-controls">
           <select
-            className="select-input"
+            className="av-select"
+            aria-label="布局宽度模式"
+            value={layoutMode}
+            onChange={(e) => setLayoutMode(e.target.value as DevLayoutMode)}
+          >
+            <option value="stage">宽屏主舞台 (100% 全宽战情室)</option>
+            <option value="split">双栏分屏圆桌 (≥560px 环形盘面)</option>
+            <option value="grid">多座对比网格 (自适应多视角)</option>
+          </select>
+
+          {layoutMode === "stage" && (data?.players?.length ?? 0) > 0 && (
+            <select
+              className="av-select"
+              aria-label="当前检视座位"
+              value={activeSlot}
+              onChange={(e) => setActiveSlot(Number(e.target.value))}
+            >
+              {(data?.players ?? []).map((p) => (
+                <option key={p.slot} value={p.slot}>
+                  视角：#{p.slot} {p.displayName}
+                </option>
+              ))}
+            </select>
+          )}
+
+          <select
+            className="av-select"
+            aria-label="契约板子预设"
             value={preset}
             disabled={loading}
             onChange={(e) => setPreset(e.target.value)}
@@ -132,59 +182,74 @@ export function DevSimulator() {
             <option value="6p">6人标准局 (4蓝2红)</option>
             <option value="7p_oberon">7人奥伯伦局 (Q4保护轮)</option>
             <option value="7p_mordred">7人莫德雷德局 (Q4保护轮)</option>
-            <option value="8p">8人局 (5蓝3红)</option>
+            <option value="8p">8人圣战局 (5蓝3红)</option>
             <option value="10p">10人全神局 (6蓝4红)</option>
           </select>
           <button
             type="button"
-            className="btn btn-secondary"
+            className="av-btn"
             disabled={loading}
             onClick={() => void loadTokens(preset, "seat_all")}
           >
-            🪑 全员入座
+            全员入座
           </button>
           <button
             type="button"
-            className="btn btn-primary"
+            className="av-btn av-btn-gold"
             disabled={loading}
             onClick={() => void loadTokens(preset, "start_game")}
           >
-            ⚔️ 一键发牌开局
+            ✦ 一键拔剑发牌
           </button>
           <button
             type="button"
-            className="btn btn-secondary"
+            className="av-btn"
             disabled={loading}
             onClick={() => void loadTokens(preset, "reset_lobby")}
           >
-            🔄 重置回大厅
+            重置回大厅
           </button>
         </div>
       </header>
 
-      {errMsg && <div className="error-banner">{errMsg}</div>}
+      {errMsg && <div className="av-toast-err">{errMsg}</div>}
 
-      <div className="dev-frames-strip">
-        {(data?.players ?? []).map((p) => (
-          <div key={p.slot} className="dev-frame-column">
-            <div className="dev-frame-title">
-              <span>视角 #{p.slot}</span>
-              <b>{p.displayName}</b>
+      <div
+        className={[
+          "dev-frames-strip",
+          layoutMode === "stage" ? "layout-stage" : "",
+          layoutMode === "split" ? "layout-split" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+      >
+        {(data?.players ?? []).map((p) => {
+          const hiddenInStage = layoutMode === "stage" && p.slot !== activeSlot;
+          return (
+            <div
+              key={p.slot}
+              className="dev-frame-column"
+              style={hiddenInStage ? { display: "none" } : undefined}
+            >
+              <div className="dev-frame-title">
+                <span>骑士席位 #{p.slot}</span>
+                <b>{p.displayName}</b>
+              </div>
+              <iframe
+                title={`avalon-seat-${p.slot}`}
+                src={`/?devSlot=${p.slot}`}
+                className="dev-drawer-iframe"
+                ref={(el) => {
+                  if (el) {
+                    iframeRefs.current.set(p.slot, el);
+                  } else {
+                    iframeRefs.current.delete(p.slot);
+                  }
+                }}
+              />
             </div>
-            <iframe
-              title={`avalon-seat-${p.slot}`}
-              src={`/?devSlot=${p.slot}`}
-              className="dev-drawer-iframe"
-              ref={(el) => {
-                if (el) {
-                  iframeRefs.current.set(p.slot, el);
-                } else {
-                  iframeRefs.current.delete(p.slot);
-                }
-              }}
-            />
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
